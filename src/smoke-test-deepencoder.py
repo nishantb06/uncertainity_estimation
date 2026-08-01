@@ -1,3 +1,8 @@
+"""Smoke-test DeepEncoder with optional DeepSeek-OCR pretrained weights."""
+
+from __future__ import annotations
+
+import argparse
 import sys
 from pathlib import Path
 
@@ -6,39 +11,80 @@ from torchvision import transforms
 
 ROOT = Path("/mnt/data/uncertainity_estimation")
 sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, str(ROOT / "docile"))  # if docile isn't installed
+sys.path.insert(0, str(ROOT / "docile"))
 
-from deepencoder import build_sam_vit_b, build_clip_l
+from deepencoder_bundle import DEFAULT_CHECKPOINT, DeepEncoder, load_deepseek_ocr_encoder
 
-# --- 1) get a page image ---
-from docile.dataset import CachingConfig, Dataset
+# Resolution → expected token count (H/64 * W/64)
+RESOLUTION_TOKENS = {
+    512: 64,
+    640: 100,
+    1024: 256,
+}
 
-DATASET_PATH = Path("/mnt/data/uncertainity_estimation/docile/data/docile")
-dataset = Dataset("val", DATASET_PATH, cache_images=CachingConfig.DISK)
-doc = dataset[1]
 
-img = doc.page_image(page=0, image_size=(None, 1024))  # PIL
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument(
+        "--checkpoint",
+        type=Path,
+        default=DEFAULT_CHECKPOINT,
+        help="DeepSeek-OCR safetensors shard (encoder tensors only are loaded)",
+    )
+    p.add_argument(
+        "--no-weights",
+        action="store_true",
+        help="Skip checkpoint load (random init; shape check only)",
+    )
+    p.add_argument("--size", type=int, default=1024, choices=sorted(RESOLUTION_TOKENS))
+    p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    return p.parse_args()
 
-# --- 2) preprocess to SAM-style 1024 square ---
-# Encoder assumes img_size=1024; no norm inside the module.
-preprocess = transforms.Compose([
-    transforms.Resize((640, 640)), # can change these to 512x512 or 1024x1024 as well to get 64 , 100 and 256 tokens at each resolution.
-    transforms.ToTensor(),
-])
-x = preprocess(img.convert("RGB")).unsqueeze(0)  # (1, 3, 1024, 1024)
 
-# --- 3) DeepEncoder: SAM (+16x compressor) -> CLIP-L (no patch embed) ---
-device = "cuda" if torch.cuda.is_available() else "cpu"
-# No checkpoint => random weights; fine to check plumbing/shapes
-sam = build_sam_vit_b(checkpoint=None).to(device).eval()
-clip = build_clip_l().to(device).eval()
+def main() -> None:
+    args = parse_args()
+    expected_tokens = RESOLUTION_TOKENS[args.size]
 
-with torch.inference_mode():
-    x = x.to(device)
-    sam_feats = sam(x)             # (1, 1024, 16, 16) — 256 vision tokens
-    # pixel_values only used for batch size when patch_embeds is set
-    clip_out = clip(x, sam_feats)  # (1, 257, 1024) — CLS + 256 tokens
+    from docile.dataset import CachingConfig, Dataset
 
-print("sam:", type(sam_feats), sam_feats.shape, sam_feats.dtype)
-print("clip:", type(clip_out), clip_out.shape, clip_out.dtype)
-print(clip_out[0, 0, :8])  # peek at CLS features
+    dataset = Dataset(
+        "val",
+        ROOT / "docile" / "data" / "docile",
+        cache_images=CachingConfig.DISK,
+    )
+    img = dataset[1].page_image(page=0, image_size=(None, 1024))
+
+    preprocess = transforms.Compose(
+        [
+            transforms.Resize((args.size, args.size)),
+            transforms.ToTensor(),
+        ]
+    )
+    x = preprocess(img.convert("RGB")).unsqueeze(0)
+
+    if args.no_weights:
+        model = DeepEncoder().to(args.device).eval()
+        print("weights: random ( --no-weights )")
+    else:
+        dtype = torch.bfloat16 if args.device.startswith("cuda") else torch.float32
+        model = load_deepseek_ocr_encoder(
+            args.checkpoint,
+            device=args.device,
+            dtype=dtype,
+        ).eval()
+        print(f"weights: {args.checkpoint}")
+
+    with torch.inference_mode():
+        x = x.to(device=args.device, dtype=next(model.parameters()).dtype)
+        tokens = model(x)
+
+    print("tokens:", tuple(tokens.shape), tokens.dtype)
+    assert tokens.shape == (1, expected_tokens, model.n_embed), (
+        f"expected (1, {expected_tokens}, {model.n_embed}), got {tuple(tokens.shape)}"
+    )
+    print("ok: projector output shape matches", args.size, "→", expected_tokens, "tokens")
+    print("peek:", tokens[0, 0, :8].float().cpu())
+
+
+if __name__ == "__main__":
+    main()
