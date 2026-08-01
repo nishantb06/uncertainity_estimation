@@ -13,3 +13,4 @@
 *.jsonl.gz.part.7
 *.jsonl.gz.part.8
 *.jsonl.gz.part.9
+.venv/
