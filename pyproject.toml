@@ -10,6 +10,9 @@ dependencies = [
   # your code also needs these:
   "einops",
   "easydict",
+  "tqdm>=4.70.0",
+  "pdf2image>=1.17.0",
+  "pillow>=12.3.0",
 ]
 
 [[tool.uv.index]]

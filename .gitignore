@@ -14,3 +14,16 @@
 *.jsonl.gz.part.8
 *.jsonl.gz.part.9
 .venv/
+*.ipynb
+*.pyc
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.webp
+*.svg
+*.pdf
+*.doc
+*.docx
