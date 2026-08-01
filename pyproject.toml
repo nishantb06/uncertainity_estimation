@@ -7,13 +7,17 @@ requires-python = ">=3.12"
 dependencies = [
   "torch",
   "torchvision",
-  # your code also needs these:
   "einops",
   "easydict",
   "safetensors",
   "tqdm>=4.70.0",
   "pdf2image>=1.17.0",
   "pillow>=12.3.0",
+  "lightning>=2.6.0",
+  "tensorboard>=2.21.0",
+  "pyyaml>=6.0",
+  "rich>=13.0.0",
+  "pandas>=2.2.0",
 ]
 
 [[tool.uv.index]]

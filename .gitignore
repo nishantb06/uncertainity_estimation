@@ -1,6 +1,9 @@
 *.txt
 *.csv
 *.json
+# Keep experiment split artifacts tracked
+!splits/
+!splits/**
 *.jsonl
 *.jsonl.gz
 *.jsonl.gz.part

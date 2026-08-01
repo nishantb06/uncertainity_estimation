@@ -1,0 +1,74 @@
+[
+  {
+    "doc_id": "049006c19fad484cbfce7ffe",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "253e267f5d2a4e2ab50f524b",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "2aeea3060ec34935b5a2a6e9",
+    "document_type": "debit_note"
+  },
+  {
+    "doc_id": "41943abcfdd444f9965404dd",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "44f41c3d75e54e1dbf82e20a",
+    "document_type": "debit_note"
+  },
+  {
+    "doc_id": "45b9b6526f064a50892e0048",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "482fab81bd2849a0986cf9b0",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "696533fb89994ee4aac1f08c",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "7a0ea50d2c524fcb8c08a838",
+    "document_type": "debit_note"
+  },
+  {
+    "doc_id": "7b40dbfdde1241b8b8466385",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "8b420497f73a4785bd5c4c6a",
+    "document_type": "debit_note"
+  },
+  {
+    "doc_id": "99c6ecc4832d4bd88f0114ec",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "9b11be01fe3046ac96fb5724",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "cef8cfa51436479c8fa81b0a",
+    "document_type": "debit_note"
+  },
+  {
+    "doc_id": "e3164d2f5fb74e15a36bdbb3",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "e86f0d4256e04a9495d1ce01",
+    "document_type": "debit_note"
+  },
+  {
+    "doc_id": "ea2c9fa20da34c87ad6ed82b",
+    "document_type": "utility_bill"
+  },
+  {
+    "doc_id": "f56b9e20df8b4895b54c6c2a",
+    "document_type": "utility_bill"
+  }
+]

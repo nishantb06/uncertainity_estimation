@@ -484,8 +484,9 @@ class VitModel(nn.Module):
             for name, param in self.pre_layrnorm.named_parameters():
                 param.requires_grad = False
 
-        for p in self.parameters():
-            p.micro_dp = True
+        # Megatron leftover; skip — assigning custom attrs on Parameters breaks some loaders.
+        # for p in self.parameters():
+        #     p.micro_dp = True
 
     def set_input_tensor(self, input_tensor):
         if not isinstance(input_tensor, list):
