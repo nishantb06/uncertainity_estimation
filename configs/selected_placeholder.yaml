@@ -1,5 +1,5 @@
 run:
-  alias: entropy_estimation
+  alias: ghost_uncertainty_estimation
 
 data:
   dataset_path: /mnt/data/uncertainity_estimation/docile/data/docile
@@ -7,10 +7,10 @@ data:
   train_pool_path: /mnt/data/uncertainity_estimation/splits/train_pool.json
   train_mode: val_plus_sampled
   # Replace with a real 1500-id CSV (ids must be ⊆ train_pool.json)
-  sampled_documents_csv: /mnt/data/uncertainity_estimation/splits/sampled_1500_placeholder.csv
-  image_size: 1024
+  sampled_documents_csv: /mnt/data/uncertainity_estimation/uncertainty_scores/checkpoints_406M_baseline_val_full_sam_clip_freeze_2/last_top2_by_ghost_uncertainty.csv
+  image_size: 640
   page: 0
-  batch_size: 4
+  batch_size: 16
   num_workers: 4
   class_list:
     - credit_note
@@ -27,7 +27,7 @@ data:
 model:
   checkpoint: /mnt/data/DeepSeek-OCR/model-00001-of-000001.safetensors
   n_embed: 1280
-  mlp_hidden_dims: [512]
+  mlp_hidden_dims: [2048, 1024, 512, 32]
   mlp_dropout: 0.1
   num_classes: 7
   train_from_zero:
@@ -35,20 +35,20 @@ model:
     CLIP: false
   freeze:
     SAM: true
-    CLIP: false
+    CLIP: true
 
 training:
-  max_lr: 1.0e-4
+  max_lr: 1.0e-3
   warmup_steps: 100
   max_steps: 5000
   effective_batch_size: 16
   grad_clip: 1.0
-  val_every_n_steps: 100
+  val_every_n_steps: 50
   log_every_n_steps: 10
-  save_checkpoints_every_n_steps: 500
+  save_checkpoints_every_n_steps: 100
   precision: bf16-mixed
   seed: 42
-  compile: false
+  compile: true
   logs_root: /mnt/data/logs
   checkpoints_root: /mnt/data/checkpoints
   replace_existing_logs: false

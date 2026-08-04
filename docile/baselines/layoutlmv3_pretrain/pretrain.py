@@ -579,9 +579,9 @@ def main():
     gradient_norm_clip_val = 5.0
     optimizer = "AdamW"
     ckpt_dir = "/app/data/baselines/trainings/layoutlmv3_pretraining"
-    num_gpus = 8
+    num_gpus = 1
     num_nodes = 1
-    max_epochs = 30
+    max_epochs = 1
     use_sorted = False
     resume_from_checkpoint = None
 
@@ -602,7 +602,7 @@ def main():
         default_root_dir=ckpt_dir,
         gradient_clip_val=gradient_norm_clip_val,
         resume_from_checkpoint=resume_from_checkpoint,
-        strategy="ddp",
+        # strategy="ddp",
     )
 
     datamodule = DocDataModule(

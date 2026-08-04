@@ -62,3 +62,48 @@ Throughput (CUDA-synchronized wall time):
 - `throughput/train_images_per_sec` — images/s over a full optimizer step (incl. grad accumulation)
 - `throughput/tokens_per_sec` / `throughput/train_tokens_per_sec` — same × vision tokens/image (`image_size/64`²)
 
+## Uncertainty scoring (entropy / JSD)
+
+Score `splits/train_pool.json` with a trained classifier at resolutions 512, 640, 1024 (natural log):
+
+```bash
+uv run python src/score_uncertainty.py \
+  --checkpoint /mnt/data/checkpoints/checkpoints_406M_baseline_val_full_sam_clip_freeze_2/last.ckpt \
+  --batch-size 8 \
+  --out-dir /mnt/data/uncertainity_estimation/uncertainty_scores
+```
+
+Uses `config.yaml` next to the checkpoint by default. Outputs under
+`uncertainty_scores/<checkpoints_run_folder>/`:
+
+| File | Contents |
+|------|----------|
+| `{stem}_entropy_information.csv` | All pool docs: `entropy_1024/640/512`, `entropy_mean_logits`, `jsd_1024_512`, `jsd_1024_640`, `jsd_512_640`, plus `pred_*` |
+| `{stem}_top1500_by_entropy_mean_logits.csv` | Top-K ids by `entropy_mean_logits` (for `sampled_documents_csv`) |
+| `{stem}_hist_*.png` | Histograms per metric |
+| `{stem}_summary.json` | Means/stds and paths |
+
+Optional flags: `--doc-ids-json`, `--top-k`, `--rank-by` (any metric column), `--config`, `--no-amp`.
+
+## Ghost-gradient uncertainty (multi-resolution alignment)
+
+Scores the same `train_pool` by comparing **head** weight-gradient directions across
+resolutions 1024 / 640 / 512 using the ghost trick (no full per-sample grad matrices).
+
+```bash
+uv run python src/score_ghost_uncertainty.py \
+  --checkpoint /mnt/data/checkpoints/checkpoints_406M_baseline_val_full_sam_clip_freeze_2/last.ckpt \
+  --batch-size 4 \
+  --out-dir /mnt/data/uncertainity_estimation/uncertainty_scores
+```
+
+| File | Contents |
+|------|----------|
+| `{stem}_ghost_information.csv` | `ghost_cos_*` pairs, `ghost_avg_cos`, `ghost_uncertainty` (= `1 - avg_cos`) |
+| `{stem}_top1500_by_ghost_uncertainty.csv` | Top-K most uncertain ids |
+| `{stem}_hist_ghost_*.png` | Histograms |
+| `{stem}_ghost_summary.json` | Means/stds and paths |
+
+Encoder runs under `no_grad`; only MLP head Linears are hooked. AdamW `exp_avg_sq`
+from the ckpt is used as a row/col preconditioner when present (`--no-precond` to disable).
+

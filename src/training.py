@@ -195,6 +195,7 @@ class DocumentClassifierLightning(pl.LightningModule):
             on_epoch=False,
             prog_bar=True,
             logger=True,
+            batch_size=n_images,
         )
         self.log(
             "throughput/tokens_per_sec",
@@ -203,6 +204,7 @@ class DocumentClassifierLightning(pl.LightningModule):
             on_epoch=False,
             prog_bar=False,
             logger=True,
+            batch_size=n_images,
         )
 
         self._images_in_opt_step += n_images
@@ -222,6 +224,7 @@ class DocumentClassifierLightning(pl.LightningModule):
             on_epoch=False,
             prog_bar=False,
             logger=True,
+            batch_size=self._images_in_opt_step,
         )
         self.log(
             "throughput/train_tokens_per_sec",
@@ -230,6 +233,7 @@ class DocumentClassifierLightning(pl.LightningModule):
             on_epoch=False,
             prog_bar=False,
             logger=True,
+            batch_size=self._images_in_opt_step,
         )
         self._images_in_opt_step = 0
         self._opt_step_start_time = None
@@ -239,8 +243,23 @@ class DocumentClassifierLightning(pl.LightningModule):
         loss = self.criterion(logits, batch["labels"])
         preds = logits.argmax(dim=-1)
         acc = (preds == batch["labels"]).float().mean()
-        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-        self.log("train_acc", acc, prog_bar=True, on_step=True, on_epoch=True)
+        bs = int(batch["labels"].shape[0])
+        self.log(
+            "train_loss",
+            loss,
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            batch_size=bs,
+        )
+        self.log(
+            "train_acc",
+            acc,
+            prog_bar=True,
+            on_step=True,
+            on_epoch=True,
+            batch_size=bs,
+        )
         return loss
 
     def on_validation_epoch_start(self) -> None:
@@ -255,27 +274,49 @@ class DocumentClassifierLightning(pl.LightningModule):
         preds = logits.argmax(dim=-1)
         labels = batch["labels"]
         correct = preds == labels
+        bs = int(labels.shape[0])
         self._val_correct += int(correct.sum().item())
         self._val_total += int(labels.numel())
         for p, y, ok in zip(preds.tolist(), labels.tolist(), correct.tolist()):
             self._val_total_per_class[y] += 1
             if ok:
                 self._val_correct_per_class[y] += 1
-        self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True, sync_dist=True)
+        self.log(
+            "val_loss",
+            loss,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+            sync_dist=True,
+            batch_size=bs,
+        )
 
     def on_validation_epoch_end(self) -> None:
         acc = self._val_correct / max(1, self._val_total)
-        self.log("val_acc", acc, prog_bar=True, sync_dist=False)
+        self.log("val_acc", acc, prog_bar=True, sync_dist=False, batch_size=self._val_total)
         for idx, name in enumerate(self.class_names):
             total = self._val_total_per_class.get(idx, 0)
             correct = self._val_correct_per_class.get(idx, 0)
             class_acc = correct / total if total else 0.0
-            self.log(f"val_acc_per_class/{name}", class_acc, sync_dist=False)
+            self.log(
+                f"val_acc_per_class/{name}",
+                class_acc,
+                sync_dist=False,
+                batch_size=max(1, total),
+            )
 
     def on_before_optimizer_step(self, optimizer) -> None:
         if self.grad_clip and self.grad_clip > 0:
             norm = torch.nn.utils.clip_grad_norm_(self.parameters(), self.grad_clip)
-            self.log("grad_norm", norm, on_step=True, on_epoch=False, prog_bar=True)
+            self.log(
+                "grad_norm",
+                norm,
+                on_step=True,
+                on_epoch=False,
+                prog_bar=True,
+                batch_size=1,
+            )
+
 
     def configure_optimizers(self):
         trainable = [p for p in self.parameters() if p.requires_grad]
