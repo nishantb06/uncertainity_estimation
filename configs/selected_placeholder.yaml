@@ -1,5 +1,5 @@
 run:
-  alias: ghost_uncertainty_estimation
+  alias: ghost_uncertainty_estimation_2
 
 data:
   dataset_path: /mnt/data/uncertainity_estimation/docile/data/docile
@@ -51,4 +51,4 @@ training:
   compile: true
   logs_root: /mnt/data/logs
   checkpoints_root: /mnt/data/checkpoints
-  replace_existing_logs: false
+  replace_existing_logs: true
