@@ -1,56 +1,90 @@
-Uncertainty estimation
+# Uncertainty estimation
 
-So this entire experiment is aimed at finding the answer to the question: “From a given pool of unlabeled data, how would you select a subset to annotate so that they can help your model become better?”
+This entire experiment is aimed at finding the answer to the question: “From a given pool of unlabeled data, how would you select a subset to annotate so that they can help your model become better?”
 
-In this experiment we are working with a set of 5680 documents, out of which 500 documents make the validation set and the remaining 5180 make the training set. We are asked to train a model on the validation set first and then use this model to select 1500 documents from the training set, which is assumed to be unlabeled.
+Gtihub repo : https://github.com/nishantb06/uncertainity_estimation
 
-After we have chosen 1500 documents, we then use these 1500 together with the 500 from the validation set to train our model and prove that using this additional set of documents our model does perform better than the model only trained on the validation set.
+## Protocol
 
-Meanwhile, we also have to train a model using the entire set of 5680 documents to set a ceiling for our training runs. Our model trained with 1500 + 500 cannot outperform the ceiling model, but the model trained on just the validation set most probably won’t. This above statement is verified from our experiments as well.
+We work with 5680 DocILE documents. Following the assignment remap, the original validation set (500) is the labeled seed, and the original training set (5180) is the unlabeled pool.
 
-Experiments setup
+From the pool I carved out a fixed stratified holdout of 180 documents for evaluation, dropped `debit_note` and `utility_bill` (absent from val), and left ~4982 documents as the selectable pool. All reported metrics are on this holdout.
 
-Infrastructure
+The three training runs are:
 
-I train on AWS spot instances (G6) machines and I keep one EBS volume which gets reattached and mounted to every new machine. This way all my checkpoints and logs persist across all the training sessions.
+1. **Baseline** — train on the 500 labeled seed only.
+2. **Selected** — train on the 500 + 1500 documents chosen from the pool without using their labels at selection time.
+3. **Ceiling** — train on the full pool ∪ seed. This sets an upper bound; 500 + 1500 should beat baseline but not beat ceiling.
 
-Model choice
+## Experiments setup
 
-Every recent SOTA document understanding and OCR model has a two-phase pipeline. The vision encoder usually consists of ~500M parameters in total and is used to encode visual information into token embeddings which are then consumed by the LLM decoder. It’s important to keep the visual embeddings count to a minimum because dividing an image into 16×16 patches can easily explode the context length.
-
-Due to this reason I decided to go with DeepSeek’s vision encoder pipeline, which consists of an 80M SAM encoder followed by a convolution layer to downscale, followed by a 300M CLIP model which outputs either 64, 100, or 256 tokens depending on the input image configuration, which can be 512×512, 640×640, or 1024×1024.
-
-I then decided to attach my own custom MLP on the CLS token which CLIP outputs for the classification task of this document data.
-
-Experiments setup
-
-Infrastructure
+### Infrastructure
 
 I train on AWS spot instances (G6) machines and I keep one EBS volume which gets reattached and mounted to every new machine. This way all my checkpoints and logs persist across all the training sessions.
 
-Model choice
+### Model
 
-Every recent SOTA document understanding and OCR model has a two-phase pipeline. The vision encoder usually consists of ~500M parameters in total and is used to encode visual information into token embeddings which are then consumed by the LLM decoder. It’s important to keep the visual embeddings count to a minimum because dividing an image into 16×16 patches can easily explode the context length.
+Every recent SOTA document understanding / OCR model has a two-phase pipeline: a ~500M vision encoder that produces token embeddings for an LLM decoder. Keeping the visual token count small matters, since 16×16 patches explode context length.
 
-Due to this reason I decided to go with DeepSeek’s vision encoder pipeline, which consists of an 80M SAM encoder followed by a convolution layer to downscale, followed by a 300M CLIP model which outputs either 64, 100, or 256 tokens depending on the input image configuration, which can be 512×512, 640×640, or 1024×1024.
+I used DeepSeek’s vision encoder: an 80M SAM encoder, a convolution downscale, then a 300M CLIP model that outputs 64 / 100 / 256 tokens at 512 / 640 / 1024. I freeze SAM and CLIP, and attach a custom MLP on CLIP’s CLS token for 7-way document-type classification (page 0 only, train resolution 640).
 
-I then decided to attach my own custom MLP on the CLS token which CLIP outputs for the classification task of this document data.
+Tax invoice and order dominate the class distribution (~68% / ~25%), so I only include holdout curves for those two.
 
-All the documents are divided into 7 categories like tax invoice and orders and such. The two I just mentioned dominate the class distribution heavily, and so I have only included results from those two.
+## Methods for uncertainty estimation
 
-Given more time and resources, I could have done the same exercise on object detection loss function as well.
+I scored the unlabeled pool with the baseline checkpoint. Let $z \in \mathbb{R}^{C}$ be the MLP logits over $C = 7$ classes, and
 
-Methods for uncertainty estimation:
+$$
+p_c = \frac{e^{z_c}}{\sum_{k=1}^{C} e^{z_k}}, \qquad
+H(p) = -\sum_{c=1}^{C} p_c \log p_c
+$$
 
-I primarily decided to go with the simplest approach I could think of.
+(natural log / nats). High $H(p)$ means the model cannot classify the document clearly, so annotating it is more likely to provide useful training signal.
 
-1. Entropy estimation: If the entropy of the output of the MLP is too high, then that means that the model is unable to classify that document clearly. This means that if this document was in the training set, it would definitely help the model learn, i.e. provide informative gradients.
+The main selection rule was **average entropy**. For resolutions $r \in \{512, 640, 1024\}$ with logits $z^{(r)}$,
 
-The above principle can be applied in a variety of combinations. For example:
+$$
+\bar{z} = \frac{1}{3}\sum_{r} z^{(r)}, \qquad
+s_{\mathrm{ent}} = H\!\left(\mathrm{softmax}(\bar{z})\right)
+$$
 
-1. Pass the same document through multiple resolutions. High entropy on all three, or extremely high entropy on one of those resolutions, probably indicates this document should be included in the training set.
-2. Take multiple checkpoints of the same model, collect entropy information from all of them, and then compare.
+(`entropy_mean_logits`). I rank the pool by $s_{\mathrm{ent}}$ and take the top 1500.
 
-3. Compare Jensen–Shannon divergence, which is symmetric in nature, across the logits of the same documents inferred at different resolutions.
+The same multi-resolution setup also supports other scores I implemented (not used for the plots below):
 
-Using the average entropy method, here are the results. It’s clear that the model trained on the 1500 + 500 set outperforms the model trained on just the validation set, but is not able to beat the ceiling set by training on the entire set.
+1. Per-resolution entropy $H(p^{(r)})$ — high on all three, or extremely high on one.
+2. Jensen–Shannon divergence across resolution pairs. For distributions $p, q$:
+
+$$
+\mathrm{JSD}(p \| q) = \tfrac{1}{2}\, D_{\mathrm{KL}}(p \| m) + \tfrac{1}{2}\, D_{\mathrm{KL}}(q \| m),
+\quad m = \tfrac{1}{2}(p + q)
+$$
+
+3. Ghost-gradient uncertainty: for head-gradient directions $g^{(r)}$ at each resolution, score disagreement as
+
+$$
+s_{\mathrm{ghost}} = 1 - \frac{1}{|\mathcal{P}|}\sum_{(r,r') \in \mathcal{P}}
+\cos\!\left(g^{(r)}, g^{(r')}\right)
+$$
+
+where $\mathcal{P}$ is the set of resolution pairs.
+
+Multi-checkpoint aggregation is another natural extension I did not run for the final comparison.
+
+## Results
+
+Using average-entropy selection, the 500 + 1500 model outperforms the baseline (500 only) on holdout loss and per-class accuracy for tax invoice and order, but does not beat the ceiling. Runs are not length-matched, so compare the curves with that in mind.
+
+![Validation loss for runs](images/val_loss_for_runs.png)
+
+![Validation accuracy — tax invoice](images/val_accuracy_tax_invoice.png)
+
+![Validation accuracy — orders](images/val_accuracy_orders.png)
+
+![Training accuracy](images/training_accuracy.png)
+
+![Gradient norms](images/gradient_norms.png)
+
+## Limitations
+
+A random 1500 baseline would make clearer that the gain comes from *which* documents were chosen, not only from adding 1500 labels. Given more time, I would also try the same selection idea on an object-detection loss, and compare JSD / ghost selection head-to-head with entropy.
